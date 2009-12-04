@@ -1,0 +1,72 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>ch.qos.logback</groupId>
+    <artifactId>logback-parent</artifactId>
+    <version>0.9.18-SNAPSHOT</version>
+  </parent>
+
+  <groupId>ch.qos.logback</groupId>
+  <artifactId>logback-twitter-appender</artifactId>
+  <version>${parent.version}</version>
+  <packaging>jar</packaging>
+  <name>Logback Twitter Appender</name>
+
+  <url>http://logback.qos.ch</url>
+  <description>A Logback Classic Appender that tweets log messages.</description>
+  <licenses>
+    <license>
+      <name>GNU Lesser General Public License</name>
+      <url>http://www.gnu.org/licenses/lgpl.html</url>
+    </license>
+  </licenses>
+
+  <dependencies>
+    <dependency>
+      <groupId>ch.qos.logback</groupId>
+      <artifactId>logback-core</artifactId>
+      <scope>compile</scope>
+      <!-- <version>0.9.16</version> -->
+    </dependency>
+
+    <dependency>
+      <groupId>ch.qos.logback</groupId>
+      <artifactId>logback-classic</artifactId>
+      <scope>compile</scope>
+      <!-- <version>0.9.16</version> -->
+    </dependency>
+
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-api</artifactId>
+      <scope>compile</scope>
+      <!-- <version>1.5.8</version> -->
+    </dependency>
+
+	<dependency>
+	  <groupId>net.homeip.yusuke</groupId>
+	  <artifactId>twitter4j</artifactId>
+      <scope>compile</scope>
+	  <version>2.0.9</version>
+	</dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <configuration>
+          <source>1.5</source>
+          <target>1.5</target>
+        </configuration>
+      </plugin>
+
+    </plugins>
+  </build>
+</project>

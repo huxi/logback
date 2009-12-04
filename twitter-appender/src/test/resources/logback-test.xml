@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration debug="true">
+
+    <appender name="TWITTER" class="ch.qos.logback.classic.twitter.TwitterAppender">
+        <layout class="ch.qos.logback.classic.PatternLayout">
+            <param name="Pattern" value="%-5level - %msg%n"/>
+        </layout>
+        <Username></Username>
+        <Password></Password>
+		<ReplyUser>huxi</ReplyUser>
+		<ReplyUser>ceki</ReplyUser>
+		<!--
+		Alternatively:
+		<ReplyUsers>huxi,ceki</ReplyUsers>
+        -->
+		<DirectMessageUser>huxi</DirectMessageUser>
+		<DirectMessageUser>ceki</DirectMessageUser>
+		<!--
+		Alternatively:
+        <DirectMessageUsers>huxi,ceki</DirectMessageUsers>
+        -->
+    </appender>
+
+	<appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+		<layout class="ch.qos.logback.classic.PatternLayout">
+			<param name="Pattern" value="%-5level - %msg%n"/>
+		</layout>
+	</appender>
+
+	<root>
+        <level value="INFO"/>
+        <appender-ref ref="TWITTER"/>
+		<appender-ref ref="CONSOLE"/>
+    </root>
+
+</configuration>
