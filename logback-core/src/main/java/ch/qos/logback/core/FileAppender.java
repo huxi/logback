@@ -13,15 +13,15 @@
  */
 package ch.qos.logback.core;
 
-import java.io.BufferedWriter;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.Writer;
+import java.io.*;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
+import java.nio.charset.CharsetEncoder;
+import java.nio.charset.Charset;
 
 import ch.qos.logback.core.util.FileUtil;
+import ch.qos.logback.core.status.ErrorStatus;
+import ch.qos.logback.core.status.WarnStatus;
 
 /**
  * FileAppender appends log events to a file.
@@ -31,7 +31,46 @@ import ch.qos.logback.core.util.FileUtil;
  * 
  * @author Ceki G&uuml;lc&uuml;
  */
-public class FileAppender<E> extends WriterAppender<E> {
+public class FileAppender<E> /*extends WriterAppender<E>*/ extends UnsynchronizedAppenderBase<E> {
+  private boolean immediateFlush;
+  private OutputStream outputStream;
+  private String encoding;
+  private Charset charset;
+
+  @Override
+  protected void append(E eventObject) {
+	  if (!isStarted()) {
+	    return;
+	  }
+
+	  subAppend(eventObject);
+	}
+
+  /**
+   * Actual writing occurs here.
+   * <p>
+   * Most subclasses of <code>WriterAppender</code> will need to override this
+   * method.
+   *
+   * @since 0.9.0
+   */
+  protected void subAppend(E event) {
+    if (!isStarted()) {
+      return;
+    }
+
+    try {
+      String output = this.layout.doLayout(event);
+      synchronized (this) {
+        writerWrite(output, this.immediateFlush);
+      }
+    } catch (IOException ioe) {
+      // as soon as an exception occurs, move to non-started state
+      // and add a single ErrorStatus to the SM.
+      this.started = false;
+      addStatus(new ErrorStatus("IO failure in appender", this, ioe));
+    }
+  }
 
   /**
    * Append to or truncate the file? The default value for this variable is
@@ -92,6 +131,114 @@ public class FileAppender<E> extends WriterAppender<E> {
    */
   public boolean isAppend() {
     return append;
+  }
+
+  /**
+   * If the <b>ImmediateFlush</b> option is set to <code>true</code>, the
+   * appender will flush at the end of each write. This is the default behavior.
+   * If the option is set to <code>false</code>, then the underlying stream
+   * can defer writing to physical medium to a later time.
+   * <p>
+   * Avoiding the flush operation at the end of each append results in a
+   * performance gain of 10 to 20 percent. However, there is safety tradeoff
+   * involved in skipping flushing. Indeed, when flushing is skipped, then it is
+   * likely that the last few log events will not be recorded on disk when the
+   * application exits. This is a high price to pay even for a 20% performance
+   * gain.
+   */
+  public void setImmediateFlush(boolean value) {
+    immediateFlush = value;
+  }
+
+  /**
+   * Returns value of the <b>ImmediateFlush</b> option.
+   */
+  public boolean getImmediateFlush() {
+    return immediateFlush;
+  }
+
+  public String getEncoding() {
+    return encoding;
+  }
+
+  public void setEncoding(String value) {
+    encoding = value;
+  }
+
+  private void setOutputStream(OutputStream os) {
+    // close any previously opened writer
+    closeOutputStream();
+
+    this.outputStream = os;
+    writeHeader();
+  }
+
+  /**
+   * Close the underlying {@link java.io.OutputStream}.
+   */
+  protected void closeOutputStream() {
+    if (this.outputStream != null) {
+      try {
+        // before closing we have to output out layout's footer
+        writeFooter();
+        this.outputStream.close();
+        this.outputStream = null;
+      } catch (IOException e) {
+        addStatus(new ErrorStatus("Could not close OutputStream for FileAppender.",
+            this, e));
+      }
+    }
+  }
+
+  /**
+   * Binary appenders may overwrite this default implementation.
+   */
+  protected void writeHeader() {
+    if (layout != null && (this.outputStream != null)) {
+      try {
+        StringBuilder sb = new StringBuilder();
+        appendIfNotNull(sb, layout.getFileHeader());
+        appendIfNotNull(sb, layout.getPresentationHeader());
+        if (sb.length() > 0) {
+          sb.append(CoreConstants.LINE_SEPARATOR);
+          // If at least one of file header or presentation header were not
+          // null, then append a line separator.
+          // This should be useful in most cases and should not hurt.
+          writerWrite(sb.toString(), true);
+        }
+
+      } catch (IOException ioe) {
+        this.started = false;
+        addStatus(new ErrorStatus("Failed to write header for appender named ["
+            + name + "].", this, ioe));
+      }
+    }
+  }
+
+  protected void appendIfNotNull(StringBuilder sb, String s) {
+    if (s != null) {
+      sb.append(s);
+    }
+  }
+
+  /**
+   * Binary appenders may overwrite this default implementation.
+   */
+  protected void writeFooter() {
+    if (layout != null && this.outputStream != null) {
+      try {
+        StringBuilder sb = new StringBuilder();
+        appendIfNotNull(sb, layout.getPresentationFooter());
+        appendIfNotNull(sb, layout.getFileFooter());
+        if (sb.length() > 0) {
+          writerWrite(sb.toString(), true); // force flush
+        }
+      } catch (IOException ioe) {
+        this.started = false;
+        addStatus(new ErrorStatus("Failed to write footer for appender named ["
+            + name + "].", this, ioe));
+      }
+    }
   }
 
   /**
@@ -159,6 +306,29 @@ public class FileAppender<E> extends WriterAppender<E> {
       errors++;
       addError("\"File\" property not set for appender named [" + name + "].");
     }
+    if (this.layout == null) {
+      addStatus(new ErrorStatus("No layout set for the appender named \""
+          + name + "\".", this));
+      errors++;
+    }
+
+    charset = Charset.defaultCharset(); // initializing with default charset as fallback
+    if(this.encoding != null) {
+      try {
+        charset = Charset.forName(this.encoding);
+      } catch (RuntimeException ex) {
+        addStatus(new WarnStatus("Could not resolve charset-encoding \""+this.encoding+"\" for the appender named \""
+            + name + "\"! Using default charset as fallback.", this, ex));
+        // errors++;
+      }
+    }
+
+    if (this.outputStream == null) {
+      addStatus(new ErrorStatus("No outputStream set for the appender named \""
+          + name + "\".", this));
+      errors++;
+    }
+    // only error free appenders should be activated
     if (errors == 0) {
       super.start();
     }
@@ -174,14 +344,9 @@ public class FileAppender<E> extends WriterAppender<E> {
    * <p> <b>Do not use this method directly. To configure a FileAppender or one
    * of its subclasses, set its properties one by one and then call start().</b>
    * 
-   * @param filename
+   * @param file_name
    *                The path to the log file.
-   * @param append
-   *                If true will append to fileName. Otherwise will truncate
-   *                fileName.
-   * @param bufferedIO
-   * @param bufferSize
-   * 
+   *
    * @throws IOException
    * 
    */
@@ -199,11 +364,11 @@ public class FileAppender<E> extends WriterAppender<E> {
     if (prudent) {
       fileChannel = fileOutputStream.getChannel();
     }
-    Writer w = createWriter(fileOutputStream);
+    OutputStream os=fileOutputStream;
     if (bufferedIO) {
-      w = new BufferedWriter(w, bufferSize);
+      os = new BufferedOutputStream(os, bufferSize);
     }
-    setWriter(w);
+    setOutputStream(os);
   }
 
   public boolean isBufferedIO() {
@@ -254,7 +419,8 @@ public class FileAppender<E> extends WriterAppender<E> {
       if (size != position) {
         fileChannel.position(size);
       }
-      super.writerWrite(s, true);
+      writeBytes(convertToBytes(s), true);
+      //super.writerWrite(s, true);
     } finally {
       if (fileLock != null) {
         fileLock.release();
@@ -262,12 +428,24 @@ public class FileAppender<E> extends WriterAppender<E> {
     }
   }
 
-  @Override
   protected void writerWrite(String s, boolean flush) throws IOException {
     if (prudent && fileChannel != null) {
       safeWrite(s);
     } else {
-      super.writerWrite(s, flush);
+      writeBytes(convertToBytes(s), flush);
+      //super.writerWrite(s, flush);
     }
   }
+
+  protected void writeBytes(byte[] bytes, boolean flush) throws IOException {
+    this.outputStream.write(bytes);
+    if (flush) {
+      this.outputStream.flush();
+    }
+  }
+
+  private byte[] convertToBytes(String s) {
+    return s.getBytes(charset);
+  }
+
 }
